@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Face Search</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ccircle cx='16' cy='14' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M7 27c1-5 5-7 9-7s8 2 9 7' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap bar">
+      <h1>Face Search</h1>
+      <span id="modelPill" class="pill">Starting…</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="lead">Find every photo of one person in a Google Drive folder. Matching photos are saved on this computer, in a folder named after the person.</p>
+
+    <form id="form" novalidate autocomplete="off">
+      <!-- 1. Person -->
+      <section class="card">
+        <h2><span class="step">1</span>Who are you looking for?</h2>
+        <label for="name">Name</label>
+        <input id="name" type="text" placeholder="e.g. Priya Sharma" maxlength="80">
+
+        <label>Photos of their face <span class="muted">(add several: different angles and lighting find more)</span></label>
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose photos">
+          <strong>Drop photos here</strong> or click to choose
+          <input id="photos" type="file" accept="image/*" multiple hidden>
+        </div>
+        <div id="previews" class="previews"></div>
+      </section>
+
+      <!-- 2. Drive -->
+      <section class="card">
+        <h2><span class="step">2</span>Google Drive folder</h2>
+        <label for="folder">Shared folder link</label>
+        <input id="folder" type="text" placeholder="https://drive.google.com/drive/folders/…" spellcheck="false">
+
+        <label>Credentials</label>
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-mode="service_account" class="on">Service account</button>
+          <button type="button" role="tab" data-mode="api_key">API key (public folder)</button>
+        </div>
+
+        <div id="panelSa">
+          <div id="jsonDrop" class="drop small">
+            Drop the service account <code>.json</code> file here, or
+            <button type="button" id="pickJson" class="link">choose a file</button>, or paste its contents:
+            <textarea id="jsonText" rows="3" spellcheck="false" placeholder='{ "type": "service_account", "client_email": "…", "private_key": "-----BEGIN PRIVATE KEY-----…" }'></textarea>
+            <input id="jsonFile" type="file" accept=".json,application/json,text/plain" hidden>
+          </div>
+          <div id="jsonStatus" class="status" hidden></div>
+
+          <div class="grid2">
+            <div>
+              <label for="client_email">Client email <span class="req">required</span></label>
+              <input id="client_email" type="text" placeholder="name@project.iam.gserviceaccount.com" spellcheck="false">
+            </div>
+            <div>
+              <label for="project_id">Project ID</label>
+              <input id="project_id" type="text" placeholder="optional" spellcheck="false">
+            </div>
+          </div>
+          <label for="private_key">Private key <span class="req">required</span>
+            <button type="button" id="toggleKey" class="link right">Show</button></label>
+          <textarea id="private_key" class="masked" rows="3" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+          <details>
+            <summary>More fields</summary>
+            <div class="grid2">
+              <div>
+                <label for="private_key_id">Private key ID</label>
+                <input id="private_key_id" type="text" placeholder="optional" spellcheck="false">
+              </div>
+              <div>
+                <label for="token_uri">Token URI</label>
+                <input id="token_uri" type="text" value="https://oauth2.googleapis.com/token" spellcheck="false">
+              </div>
+            </div>
+          </details>
+          <p id="shareHint" class="hint">Share the Drive folder with the service account's email (as <b>Viewer</b>), then paste the folder link above.</p>
+        </div>
+
+        <div id="panelKey" hidden>
+          <label for="api_key">API key <span class="req">required</span></label>
+          <input id="api_key" type="password" placeholder="AIza…" spellcheck="false">
+          <p class="hint">Works only for folders shared as <b>Anyone with the link</b>. The Google Drive API must be enabled for the key's project.</p>
+        </div>
+      </section>
+
+      <!-- 3. Options -->
+      <section class="card">
+        <h2><span class="step">3</span>Options</h2>
+        <div class="grid2">
+          <div>
+            <label for="threshold">Match strictness <output id="thresholdOut">0.40</output></label>
+            <input id="threshold" type="range" min="0.25" max="0.65" step="0.01" value="0.40">
+            <div class="scale"><span>finds more, some mistakes</span><span>stricter</span></div>
+          </div>
+          <div>
+            <label for="quality">Speed</label>
+            <select id="quality">
+              <option value="fast">Fastest (small faces may be missed)</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="accurate">Most thorough (slower)</option>
+            </select>
+            <label class="check"><input id="recursive" type="checkbox" checked> Include subfolders</label>
+          </div>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="go" type="submit" class="primary" disabled>Find photos</button>
+        <button id="cancel" type="button" class="secondary" hidden>Stop</button>
+        <span id="formError" class="error" role="alert"></span>
+      </div>
+    </form>
+
+    <!-- Progress -->
+    <section id="progress" class="card" hidden>
+      <h2 id="progressTitle">Working…</h2>
+      <div class="bar-outer"><div id="bar" class="bar-inner"></div></div>
+      <p id="progressText" class="muted"></p>
+      <dl class="stats">
+        <div><dt>Scanned</dt><dd id="sScanned">0</dd></div>
+        <div><dt>Faces seen</dt><dd id="sFaces">0</dd></div>
+        <div><dt>Matches</dt><dd id="sMatched">0</dd></div>
+        <div><dt>Skipped</dt><dd id="sFailed">0</dd></div>
+      </dl>
+      <ul id="notes" class="notes"></ul>
+    </section>
+
+    <!-- Results -->
+    <section id="results" class="card" hidden>
+      <div class="row">
+        <h2 id="resultsTitle">Matches</h2>
+        <a id="zipLink" class="button" href="#" hidden>Download all (ZIP)</a>
+      </div>
+      <p id="savedPath" class="muted"></p>
+      <div id="gallery" class="gallery"></div>
+    </section>
+
+    <!-- Earlier results -->
+    <section id="saved" class="card" hidden>
+      <h2>Saved on this computer</h2>
+      <ul id="savedList" class="saved"></ul>
+    </section>
+
+    <footer class="muted">Everything runs on this computer. Your credentials are sent only to this local server and used only to talk to Google.</footer>
+  </main>
+
+  <script src="creds.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+requests==2.34.2
+google-auth==2.61.0
+numpy==2.5.3
+opencv-python-headless==5.0.0.93
+onnxruntime==1.30.0
